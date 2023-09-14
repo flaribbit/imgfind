@@ -4,7 +4,8 @@
 //! pairs of images with related texts.
 //!
 //! https://github.com/openai/CLIP
-use candle::{DType, Device, Result, Tensor, D};
+//! https://github.com/huggingface/candle/blob/main/candle-transformers/src/models/stable_diffusion/clip.rs
+use candle_core::{DType, Device, Result, Tensor, D};
 use candle_nn as nn;
 use candle_nn::Module;
 
@@ -40,6 +41,21 @@ pub struct Config {
 
 impl Config {
     // The config details can be found in the "text_config" section of this json file:
+    // https://huggingface.co/openai/clip-vit-base-patch32/blob/main/config.json
+    pub fn clip() -> Self {
+        Self {
+            vocab_size: 49408,
+            embed_dim: 512,
+            activation: Activation::QuickGelu,
+            intermediate_size: 2048,
+            max_position_embeddings: 77,
+            pad_with: Some("!".to_string()),
+            num_hidden_layers: 12,
+            num_attention_heads: 8,
+            projection_dim: 512,
+        }
+    }
+
     // https://huggingface.co/openai/clip-vit-large-patch14/blob/main/config.json
     pub fn v1_5() -> Self {
         Self {
@@ -303,10 +319,12 @@ pub struct ClipTextTransformer {
     embeddings: ClipTextEmbeddings,
     encoder: ClipEncoder,
     final_layer_norm: candle_nn::LayerNorm,
+    text_projection: Tensor,
 }
 
 impl ClipTextTransformer {
     pub fn new(vs: candle_nn::VarBuilder, c: &Config) -> Result<Self> {
+        let text_projection = vs.get((512, 512), "text_projection.weight")?;
         let vs = vs.pp("text_model");
         let embeddings = ClipTextEmbeddings::new(vs.pp("embeddings"), c)?;
         let encoder = ClipEncoder::new(vs.pp("encoder"), c)?;
@@ -315,6 +333,7 @@ impl ClipTextTransformer {
             embeddings,
             encoder,
             final_layer_norm,
+            text_projection,
         })
     }
 
@@ -330,10 +349,19 @@ impl ClipTextTransformer {
 
 impl Module for ClipTextTransformer {
     fn forward(&self, xs: &Tensor) -> Result<Tensor> {
+        let argmax: Vec<u32> = xs.argmax(1)?.to_vec1()?;
         let (bsz, seq_len) = xs.dims2()?;
         let xs = self.embeddings.forward(xs)?;
         let causal_attention_mask = Self::build_causal_attention_mask(bsz, seq_len, xs.device())?;
         let xs = self.encoder.forward(&xs, &causal_attention_mask)?;
-        self.final_layer_norm.forward(&xs)
+        let xs = self.final_layer_norm.forward(&xs)?;
+        let (a, b, c) = xs.dims3()?;
+        let ids: Vec<u32> = argmax
+            .iter()
+            .enumerate()
+            .map(|(i, &x)| (i as u32) * (a as u32) + x)
+            .collect();
+        xs.reshape((a * b, c))?
+            .index_select(&Tensor::from_vec(ids, a, &Device::Cpu)?, 0)
     }
 }
