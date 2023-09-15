@@ -8,6 +8,7 @@
 use candle_core::{DType, Device, Result, Tensor, D};
 use candle_nn as nn;
 use candle_nn::Module;
+use nn::Conv2dConfig;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Activation {
@@ -39,10 +40,32 @@ pub struct Config {
     projection_dim: usize,
 }
 
+pub struct VisionConfig {
+    hidden_size: usize,
+    image_size: usize,
+    patch_size: usize,
+    num_attention_heads: usize,
+    intermediate_size: usize,
+}
+
 impl Config {
     // The config details can be found in the "text_config" section of this json file:
     // https://huggingface.co/openai/clip-vit-base-patch32/blob/main/config.json
     pub fn clip() -> Self {
+        Self {
+            vocab_size: 49408,
+            embed_dim: 512,
+            activation: Activation::QuickGelu,
+            intermediate_size: 2048,
+            max_position_embeddings: 77,
+            pad_with: Some("!".to_string()),
+            num_hidden_layers: 12,
+            num_attention_heads: 8,
+            projection_dim: 512,
+        }
+    }
+
+    pub fn vision() -> Self {
         Self {
             vocab_size: 49408,
             embed_dim: 512,
@@ -329,7 +352,7 @@ impl ClipTextTransformer {
         let embeddings = ClipTextEmbeddings::new(vs.pp("embeddings"), c)?;
         let encoder = ClipEncoder::new(vs.pp("encoder"), c)?;
         let final_layer_norm = candle_nn::layer_norm(c.embed_dim, 1e-5, vs.pp("final_layer_norm"))?;
-        Ok(ClipTextTransformer {
+        Ok(Self {
             embeddings,
             encoder,
             final_layer_norm,
@@ -362,6 +385,77 @@ impl Module for ClipTextTransformer {
             .map(|(i, &x)| (i as u32) * (a as u32) + x)
             .collect();
         xs.reshape((a * b, c))?
-            .index_select(&Tensor::from_vec(ids, a, &Device::Cpu)?, 0)
+            .index_select(&Tensor::from_vec(ids, a, &Device::Cpu)?, 0)?
+            .matmul(&self.text_projection)
+    }
+}
+
+#[derive(Debug)]
+struct ClipVisionEmbeddings {
+    class_embedding: Tensor,
+    patch_embedding: candle_nn::Conv2d,
+    position_embedding: candle_nn::Embedding,
+    position_ids: Tensor,
+}
+
+impl ClipVisionEmbeddings {
+    fn new(vs: candle_nn::VarBuilder, c: &Config) -> Result<Self> {
+        let class_embedding = vs.get(768, "class_embedding")?;
+        let patch_embedding = candle_nn::conv2d_no_bias(
+            3,
+            c.embed_dim,
+            c.patch_size,
+            Conv2dConfig {
+                stride: c.patch_size,
+                padding: 0,
+                ..Default::default()
+            },
+            vs.pp("patch_embedding"),
+        )?;
+        let position_embedding = candle_nn::embedding(50, 768, vs.pp("position_embedding"))?;
+        let position_ids = Tensor::arange(0u32, 50, vs.device())?.unsqueeze(0)?;
+        Ok(Self {
+            class_embedding,
+            patch_embedding,
+            position_embedding,
+            position_ids,
+        })
+    }
+}
+
+impl Module for ClipVisionEmbeddings {
+    fn forward(&self, pixel_values: &Tensor) -> Result<Tensor> {
+        todo!()
+    }
+}
+
+#[derive(Debug)]
+pub struct ClipVisionTransformer {
+    embeddings: ClipVisionEmbeddings,
+    pre_layrnorm: candle_nn::LayerNorm,
+    encoder: ClipEncoder,
+    post_layernorm: candle_nn::LayerNorm,
+}
+
+impl ClipVisionTransformer {
+    pub fn new(vs: candle_nn::VarBuilder, c: &Config) -> Result<Self> {
+        let visual_projection = vs.get((512, 768), "visual_projection.weight")?;
+        let vs = vs.pp("vision_model");
+        let embeddings = ClipVisionEmbeddings::new(vs.pp("embeddings"), c)?;
+        let pre_layrnorm = candle_nn::layer_norm(c.embed_dim, 1e-5, vs.pp("pre_layrnorm"))?;
+        let encoder = ClipEncoder::new(vs.pp("encoder"), c)?;
+        let post_layernorm = candle_nn::layer_norm(c.embed_dim, 1e-5, vs.pp("post_layernorm"))?;
+        Ok(Self {
+            embeddings,
+            pre_layrnorm,
+            encoder,
+            post_layernorm,
+        })
+    }
+}
+
+impl Module for ClipVisionTransformer {
+    fn forward(&self, xs: &Tensor) -> Result<Tensor> {
+        todo!()
     }
 }
