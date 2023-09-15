@@ -43,15 +43,14 @@ fn main() -> Result<()> {
         .take(77)
         .collect();
     let output1 = text_model.forward(&Tensor::from_vec(encoding, (1, 77), &Device::Cpu)?)?;
-    println!("output1 = {}", output1);
+    // println!("output1 = {}", output1);
 
     let vision_model = model::ClipVisionTransformer::new(vb, &model::Config::vision())?;
     let img = load_image224("./clip/cat.jpg")?.unsqueeze(0)?;
     // let img = Tensor::zeros((1, 3, 224, 224), DType::F32, &Device::Cpu)?;
     let output2 = vision_model.forward(&img)?;
-    println!("output2 = {}", output2);
+    // println!("output2 = {}", output2);
 
-    // calculate cosine similarity of output1 and output2
     let similarity = cos_sim(output1, output2)?;
     println!("similarity = {}", similarity);
 

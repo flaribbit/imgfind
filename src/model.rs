@@ -351,7 +351,7 @@ pub struct ClipTextTransformer {
 
 impl ClipTextTransformer {
     pub fn new(vs: candle_nn::VarBuilder, c: &Config) -> Result<Self> {
-        let text_projection = vs.get((512, 512), "text_projection.weight")?;
+        let text_projection = vs.get((512, 512), "text_projection.weight")?.t()?;
         let vs = vs.pp("text_model");
         let embeddings = ClipTextEmbeddings::new(vs.pp("embeddings"), c)?;
         let encoder = ClipEncoder::new(vs.pp("encoder"), c)?;
@@ -380,17 +380,20 @@ impl Module for ClipTextTransformer {
         let (bsz, seq_len) = xs.dims2()?;
         let xs = self.embeddings.forward(xs)?;
         let causal_attention_mask = Self::build_causal_attention_mask(bsz, seq_len, xs.device())?;
-        let xs = self.encoder.forward(&xs, Some(&causal_attention_mask))?;
-        let xs = self.final_layer_norm.forward(&xs)?;
+        let encoder_outputs = self.encoder.forward(&xs, Some(&causal_attention_mask))?;
+        let last_hidden_state = self.final_layer_norm.forward(&encoder_outputs)?;
         let (a, b, c) = xs.dims3()?;
-        let ids: Vec<u32> = argmax
-            .iter()
-            .enumerate()
-            .map(|(i, &x)| (i as u32) * (a as u32) + x)
-            .collect();
-        xs.reshape((a * b, c))?
-            .index_select(&Tensor::from_vec(ids, a, &Device::Cpu)?, 0)?
-            .matmul(&self.text_projection)
+        let pooled_output = last_hidden_state.reshape((a * b, c))?.index_select(
+            &Tensor::from_iter(
+                argmax
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &x)| (i as u32) * (a as u32) + x),
+                &Device::Cpu,
+            )?,
+            0,
+        )?;
+        pooled_output.matmul(&self.text_projection)
     }
 }
 
