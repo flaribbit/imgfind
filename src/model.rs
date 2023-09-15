@@ -71,10 +71,10 @@ impl Config {
             embed_dim: 768,
             activation: Activation::QuickGelu,
             intermediate_size: 3072,
-            max_position_embeddings: 77,
-            pad_with: Some("!".to_string()),
+            max_position_embeddings: 0,
+            pad_with: None,
             num_hidden_layers: 12,
-            num_attention_heads: 8,
+            num_attention_heads: 12,
             projection_dim: 512,
         }
     }
@@ -417,7 +417,6 @@ impl ClipVisionEmbeddings {
             vs.pp("patch_embedding"),
         )?;
         let position_embedding = candle_nn::embedding(50, 768, vs.pp("position_embedding"))?;
-        // let position_embedding = vs.get((50, 768), "position_embedding.weight")?;
         let position_ids = Tensor::arange(0u32, 50, vs.device())?.unsqueeze(0)?;
         Ok(Self {
             class_embedding,
@@ -430,12 +429,6 @@ impl ClipVisionEmbeddings {
 
 impl Module for ClipVisionEmbeddings {
     fn forward(&self, x: &Tensor) -> Result<Tensor> {
-        // let x = self.patch_embedding.forward(x)?;
-        // let x = x.reshape((x.dim(0)?, x.dim(1)?, ()))?;
-        // let x = x.permute((0, 2, 1))?;
-        // let x = Tensor::cat(&[self.class_embedding.unsqueeze(0)?.unsqueeze(0)?, x], 1)?;
-        // let x = x.broadcast_add(&self.position_embedding)?;
-        // Ok(x)
         let batch_size = x.dim(0)?;
         let patch_embeds = self.patch_embedding.forward(x)?;
         // println!("patch_embeds: {}", patch_embeds);
@@ -458,7 +451,7 @@ pub struct ClipVisionTransformer {
 
 impl ClipVisionTransformer {
     pub fn new(vs: candle_nn::VarBuilder, c: &Config) -> Result<Self> {
-        let visual_projection = vs.get((512, 768), "visual_projection.weight")?;
+        let visual_projection = vs.get((512, 768), "visual_projection.weight")?.t()?;
         let vs = vs.pp("vision_model");
         let embeddings = ClipVisionEmbeddings::new(vs.pp("embeddings"), c)?;
         let pre_layrnorm = candle_nn::layer_norm(c.embed_dim, 1e-5, vs.pp("pre_layrnorm"))?;
@@ -477,24 +470,13 @@ impl ClipVisionTransformer {
 impl Module for ClipVisionTransformer {
     fn forward(&self, xs: &Tensor) -> Result<Tensor> {
         use candle_core::IndexOp;
-        // let x = self.embeddings.forward(xs)?;
-        // let x = self.pre_layrnorm.forward(&x)?;
-        // let x = self
-        //     .encoder
-        //     .forward(&x, &Tensor::zeros((8, 50, 50), DType::F32, xs.device())?)?;
-        // println!("x: {}", x);
-        // let x = x.i((.., 0, ..))?;
-        // let x = self.post_layernorm.forward(&x)?;
-        // x.matmul(&self.visual_projection.t()?)
-
         let hidden_states = self.embeddings.forward(xs)?; // correct
         let hidden_states = self.pre_layrnorm.forward(&hidden_states)?;
-        // println!("hidden_states: {}", hidden_states); //correct
+        // println!("hidden_states: {}", hidden_states); // correct
         let encoder_outputs = self.encoder.forward(&hidden_states, None)?;
-        println!("encoder_outputs: {}", encoder_outputs); // wrong
-        let last_hidden_state = encoder_outputs.get(0)?;
-        let pooled_output = last_hidden_state.i((.., 0, ..))?;
+        // println!("encoder_outputs: {}", encoder_outputs); // correct
+        let pooled_output = encoder_outputs.i((.., 0, ..))?;
         let pooled_output = self.post_layernorm.forward(&pooled_output)?;
-        Ok(pooled_output)
+        pooled_output.matmul(&self.visual_projection) //correct
     }
 }

@@ -19,13 +19,16 @@ pub fn load_image224<P: AsRef<std::path::Path>>(p: P) -> candle_core::Result<Ten
         .broadcast_div(&std)
 }
 
-fn norm(x: &Tensor) -> candle_core::Result<Tensor> {
-    x.powf(2.0)?.sum(1)?.sqrt()
+fn cos_sim(e_i: Tensor, e_j: Tensor) -> Result<f32> {
+    let sum_ij = (&e_i * &e_j)?.sum_all()?.to_scalar::<f32>()?;
+    let sum_i2 = (&e_i * &e_i)?.sum_all()?.to_scalar::<f32>()?;
+    let sum_j2 = (&e_j * &e_j)?.sum_all()?.to_scalar::<f32>()?;
+    Ok(sum_ij / (sum_i2 * sum_j2).sqrt())
 }
 
 fn main() -> Result<()> {
     let tokenizer = Tokenizer::from_file("./clip/tokenizer.json")?;
-    let encoding = tokenizer.encode("two cats", true)?;
+    let encoding = tokenizer.encode("a cat", true)?;
     println!("{:?}", encoding.get_ids());
     let weights = unsafe { candle_core::safetensors::MmapedFile::new("clip/model.safetensors")? };
     let weights = weights.deserialize()?;
@@ -40,20 +43,16 @@ fn main() -> Result<()> {
         .take(77)
         .collect();
     let output1 = text_model.forward(&Tensor::from_vec(encoding, (1, 77), &Device::Cpu)?)?;
-    println!("{}", output1);
+    println!("output1 = {}", output1);
 
     let vision_model = model::ClipVisionTransformer::new(vb, &model::Config::vision())?;
-    // let img = load_image224("./clip/cat.jpg")?.unsqueeze(0)?;
-    let img = Tensor::zeros((1, 3, 224, 224), DType::F32, &Device::Cpu)?;
+    let img = load_image224("./clip/cat.jpg")?.unsqueeze(0)?;
+    // let img = Tensor::zeros((1, 3, 224, 224), DType::F32, &Device::Cpu)?;
     let output2 = vision_model.forward(&img)?;
-    println!("{}", output2);
+    println!("output2 = {}", output2);
 
     // calculate cosine similarity of output1 and output2
-    let similarity = output1
-        .broadcast_mul(&output2)?
-        .sum(1)?
-        .div(&norm(&output1)?)?
-        .div(&norm(&output2)?)?;
+    let similarity = cos_sim(output1, output2)?;
     println!("similarity = {}", similarity);
 
     Ok(())
