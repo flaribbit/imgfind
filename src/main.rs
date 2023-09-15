@@ -27,9 +27,15 @@ fn cos_sim(e_i: Tensor, e_j: Tensor) -> Result<f32> {
 }
 
 fn main() -> Result<()> {
+    // get args
+    let image_path = std::env::args()
+        .nth(1)
+        .expect("please provide an image path");
+    let text = std::env::args().nth(2).expect("please provide a text");
+
     let tokenizer = Tokenizer::from_file("./clip/tokenizer.json")?;
-    let encoding = tokenizer.encode("a cat", true)?;
-    println!("{:?}", encoding.get_ids());
+    let encoding = tokenizer.encode(text, true)?;
+    // println!("{:?}", encoding.get_ids());
     let weights = unsafe { candle_core::safetensors::MmapedFile::new("clip/model.safetensors")? };
     let weights = weights.deserialize()?;
     let vb = VarBuilder::from_safetensors(vec![weights], DType::F32, &Device::Cpu);
@@ -46,7 +52,7 @@ fn main() -> Result<()> {
     // println!("output1 = {}", output1);
 
     let vision_model = model::ClipVisionTransformer::new(vb, &model::Config::vision())?;
-    let img = load_image224("./clip/cat.jpg")?.unsqueeze(0)?;
+    let img = load_image224(image_path)?.unsqueeze(0)?;
     // let img = Tensor::zeros((1, 3, 224, 224), DType::F32, &Device::Cpu)?;
     let output2 = vision_model.forward(&img)?;
     // println!("output2 = {}", output2);
