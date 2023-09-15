@@ -8,7 +8,7 @@
 use candle_core::{DType, Device, Result, Tensor, D};
 use candle_nn as nn;
 use candle_nn::Module;
-use nn::Conv2dConfig;
+use nn::{Conv2dConfig, Embedding};
 
 #[derive(Debug, Clone, Copy)]
 pub enum Activation {
@@ -68,9 +68,9 @@ impl Config {
     pub fn vision() -> Self {
         Self {
             vocab_size: 49408,
-            embed_dim: 512,
+            embed_dim: 768,
             activation: Activation::QuickGelu,
-            intermediate_size: 2048,
+            intermediate_size: 3072,
             max_position_embeddings: 77,
             pad_with: Some("!".to_string()),
             num_hidden_layers: 12,
@@ -394,7 +394,7 @@ impl Module for ClipTextTransformer {
 struct ClipVisionEmbeddings {
     class_embedding: Tensor,
     patch_embedding: candle_nn::Conv2d,
-    position_embedding: candle_nn::Embedding,
+    position_embedding: Embedding,
     position_ids: Tensor,
 }
 
@@ -404,15 +404,16 @@ impl ClipVisionEmbeddings {
         let patch_embedding = candle_nn::conv2d_no_bias(
             3,
             c.embed_dim,
-            c.patch_size,
+            32,
             Conv2dConfig {
-                stride: c.patch_size,
+                stride: 32,
                 padding: 0,
                 ..Default::default()
             },
             vs.pp("patch_embedding"),
         )?;
         let position_embedding = candle_nn::embedding(50, 768, vs.pp("position_embedding"))?;
+        // let position_embedding = vs.get((50, 768), "position_embedding.weight")?;
         let position_ids = Tensor::arange(0u32, 50, vs.device())?.unsqueeze(0)?;
         Ok(Self {
             class_embedding,
@@ -424,8 +425,21 @@ impl ClipVisionEmbeddings {
 }
 
 impl Module for ClipVisionEmbeddings {
-    fn forward(&self, pixel_values: &Tensor) -> Result<Tensor> {
-        todo!()
+    fn forward(&self, x: &Tensor) -> Result<Tensor> {
+        // let x = self.patch_embedding.forward(x)?;
+        // let x = x.reshape((x.dim(0)?, x.dim(1)?, ()))?;
+        // let x = x.permute((0, 2, 1))?;
+        // let x = Tensor::cat(&[self.class_embedding.unsqueeze(0)?.unsqueeze(0)?, x], 1)?;
+        // let x = x.broadcast_add(&self.position_embedding)?;
+        // Ok(x)
+        let batch_size = x.dim(0)?;
+        let patch_embeds = self.patch_embedding.forward(x)?;
+        // println!("patch_embeds: {}", patch_embeds);
+        let patch_embeds = patch_embeds.flatten(2, 3)?.transpose(1, 2)?;
+        // println!("patch_embeds: {}", patch_embeds);
+        let class_embeds = self.class_embedding.expand((batch_size, 1, 768))?; // correct
+        let embeddings = Tensor::cat(&[class_embeds, patch_embeds], 1)?;
+        embeddings.add(&self.position_embedding.forward(&self.position_ids)?)
     }
 }
 
@@ -435,6 +449,7 @@ pub struct ClipVisionTransformer {
     pre_layrnorm: candle_nn::LayerNorm,
     encoder: ClipEncoder,
     post_layernorm: candle_nn::LayerNorm,
+    visual_projection: Tensor,
 }
 
 impl ClipVisionTransformer {
@@ -450,12 +465,35 @@ impl ClipVisionTransformer {
             pre_layrnorm,
             encoder,
             post_layernorm,
+            visual_projection,
         })
     }
 }
 
 impl Module for ClipVisionTransformer {
     fn forward(&self, xs: &Tensor) -> Result<Tensor> {
-        todo!()
+        use candle_core::IndexOp;
+        // let x = self.embeddings.forward(xs)?;
+        // let x = self.pre_layrnorm.forward(&x)?;
+        // let x = self
+        //     .encoder
+        //     .forward(&x, &Tensor::zeros((8, 50, 50), DType::F32, xs.device())?)?;
+        // println!("x: {}", x);
+        // let x = x.i((.., 0, ..))?;
+        // let x = self.post_layernorm.forward(&x)?;
+        // x.matmul(&self.visual_projection.t()?)
+
+        let hidden_states = self.embeddings.forward(xs)?; // correct
+        let hidden_states = self.pre_layrnorm.forward(&hidden_states)?;
+        // println!("hidden_states: {}", hidden_states); //correct
+        let encoder_outputs = self.encoder.forward(
+            &hidden_states,
+            &Tensor::zeros((8, 50, 50), DType::F32, xs.device())?,
+        )?;
+        println!("encoder_outputs: {}", encoder_outputs); // wrong
+        let last_hidden_state = encoder_outputs.get(0)?;
+        let pooled_output = last_hidden_state.i((.., 0, ..))?;
+        let pooled_output = self.post_layernorm.forward(&pooled_output)?;
+        Ok(pooled_output)
     }
 }
