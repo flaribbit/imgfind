@@ -225,7 +225,7 @@ fn main() -> Result<()> {
         httpd.serve(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port))?;
         return Ok(());
     }
-    println!("usage: clip add <path> | clip find <text>");
+    println!("usage: clip add <path> | clip find <text> | clip serve <port>");
     Ok(())
 }
 
