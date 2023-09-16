@@ -11,5 +11,6 @@ candle-nn = "0.2.1"
 image = "0.24.7"
 rmp-serde = "1.1.2"
 serde = "1.0.188"
+serde_json = "1"
 tokenizers = "0.14.0"
 xjbutil = { version = "0.9.0-ECHO", default-features = false, features = ["minhttpd"] }

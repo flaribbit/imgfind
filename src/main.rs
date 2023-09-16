@@ -1,13 +1,17 @@
 mod model;
 use std::collections::BTreeMap;
+use std::error::Error;
 use std::fs::read;
 use std::net::{SocketAddrV4, Ipv4Addr};
 use std::path::Path;
+use std::sync::Arc;
 
 use candle_core::Module;
 use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
-use tokenizers::tokenizer::{Result, Tokenizer};
+use serde_json;
+use tokenizers::tokenizer;
+use tokenizers::tokenizer::Tokenizer;
 use xjbutil::minhttpd::{MinHttpd, HttpUri, HttpHeaders, HttpParams, HttpBody, HttpResponse};
 
 pub fn load_image224<P: AsRef<std::path::Path>>(p: P) -> candle_core::Result<Tensor> {
@@ -44,7 +48,7 @@ fn add_image_feature(
     database: &mut Database,
     model: &model::ClipVisionTransformer,
     path: &str,
-) -> Result<()> {
+) -> tokenizer::Result<()> {
     let img = load_image224(path)
         .expect("failed to load image")
         .unsqueeze(0)?;
@@ -75,11 +79,11 @@ fn get_images(path: &str) -> Vec<String> {
 }
 
 fn find_image<'a>(
-    database: &'a mut Database,
+    database: &'a Database,
     model: &model::ClipTextTransformer,
     tokenizer: &Tokenizer,
     text: &str,
-) -> Result<Vec<(&'a String, f32)>> {
+) -> tokenizer::Result<Vec<(&'a String, f32)>> {
     let mut text_ids = [0u32; 77];
     let encoding = tokenizer.encode(text, true)?;
     let encoding_len = encoding.get_ids().len().min(77);
@@ -112,7 +116,7 @@ fn command_add_image(database: &mut Database, path: &str, model: &model::ClipVis
 }
 
 fn command_find_image(
-    database: &mut Database,
+    database: &Database,
     model: &model::ClipTextTransformer,
     tokenizer: &Tokenizer,
     text: &str,
@@ -132,18 +136,11 @@ fn dot_product(x: &[f32], y: &[f32]) -> f32 {
     x.iter().zip(y).map(|(x, y)| x * y).sum()
 }
 
-fn cos_sim(e_i: Tensor, e_j: Tensor) -> Result<f32> {
-    let sum_ij = (&e_i * &e_j)?.sum_all()?.to_scalar::<f32>()?;
-    let sum_i2 = (&e_i * &e_i)?.sum_all()?.to_scalar::<f32>()?;
-    let sum_j2 = (&e_j * &e_j)?.sum_all()?.to_scalar::<f32>()?;
-    Ok(sum_ij / (sum_i2 * sum_j2).sqrt())
-}
-
 fn api_get_image(
     _uri: HttpUri,
-    headers: HttpHeaders,
+    _headers: HttpHeaders,
     params: HttpParams,
-    body: HttpBody
+    _body: HttpBody
 ) -> Result<HttpResponse, Box<dyn Error>> {
     let image_path = params.get("path")
         .ok_or("missing parameter 'path'")?
@@ -166,18 +163,19 @@ fn api_get_image(
     }
 
     let content = read(path)?;
-    return Ok(HttpResponse::builder()
+    Ok(HttpResponse::builder()
         .set_code(200)
         .add_header("Content-Type", content_type)
-        .set_payload_raw(content))
+        .set_payload_raw(content)
+        .build())
 }
 
-fn main() -> Result<()> {
+fn main() -> tokenizer::Result<()> {
     let mut database = load_database();
     let arg1 = std::env::args().nth(1);
     let arg2 = std::env::args().nth(2);
-    
-    let arg1 = arg1.as_ref();
+
+    let arg1 = arg1.as_ref().map(String::as_str);
     if arg1 == Some("add") && arg2.is_some() {
         let weights =
             unsafe { candle_core::safetensors::MmapedFile::new("clip/model.safetensors")? };
@@ -194,9 +192,9 @@ fn main() -> Result<()> {
         let vb = VarBuilder::from_safetensors(vec![weights], DType::F32, &Device::Cpu);
         let model = model::ClipTextTransformer::new(vb, &model::Config::clip())?;
         let tokenizer = Tokenizer::from_file("./clip/tokenizer.json")?;
-        command_find_image(&mut database, &model, &tokenizer, &arg2.unwrap());
+        command_find_image(&database, &model, &tokenizer, &arg2.unwrap());
         return Ok(());
-    } else if arg1.as_ref() == Some("serve") && arg2.is_some() {
+    } else if arg1 == Some("serve") && arg2.is_some() {
         let weights =
         unsafe { candle_core::safetensors::MmapedFile::new("clip/model.safetensors")? };
         let weights = weights.deserialize()?;
@@ -204,26 +202,37 @@ fn main() -> Result<()> {
         let model = model::ClipTextTransformer::new(vb, &model::Config::clip())?;
         let tokenizer = Tokenizer::from_file("./clip/tokenizer.json")?;
 
-        let port = arg2.parse()?;
+        let port = arg2.unwrap().parse::<u16>()?;
         let mut httpd = MinHttpd::new();
+
+        let database = Arc::new(database);
+        let model = Arc::new(model);
+        let tokenizer = Arc::new(tokenizer);
 
         httpd.route_fn("/api/getImage", api_get_image);
 
-        httpd.route("/api/query", Box::new(move |_, headers, params, body| {
+        httpd.route("/api/query", Box::new(move |_, _, params, _| {
             let query_text = params.get("text")
                 .ok_or("missing parameter 'text'")?
                 .trim();
 
-            // TODO query the "database"
+            let query_result = find_image(&database, &model, &tokenizer, query_text)
+                .map_err(|e| format!("failed to query: {}", e))?;
+
+            let first_50_items = query_result
+                .iter()
+                .take(50)
+                .collect::<Vec<_>>();
 
             Ok(HttpResponse::builder()
                 .set_code(200)
-                .set_payload("not implemented yet")
+                .add_header("Content-Type", "application/json")
+                .set_payload(serde_json::to_string(&first_50_items)?)
                 .build())
         }));
 
-        httpd.serve(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port))?;
-        return Ok(());
+        httpd.serve(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port))
+            .unwrap();
     }
     println!("usage: clip add <path> | clip find <text> | clip serve <port>");
     Ok(())

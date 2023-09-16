@@ -658,6 +658,7 @@ dependencies = [
  "image",
  "rmp-serde",
  "serde",
+ "serde_json",
  "tokenizers",
  "xjbutil",
 ]
