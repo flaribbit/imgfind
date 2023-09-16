@@ -211,7 +211,7 @@ fn main() -> tokenizer::Result<()> {
 
         httpd.route_fn("/api/getImage", api_get_image);
 
-        httpd.route("/api/query", Box::new(move |_, _, params, _| {
+        httpd.route("/api/search", Box::new(move |_, _, params, _| {
             let query_text = params.get("text")
                 .ok_or("missing parameter 'text'")?
                 .trim();
@@ -231,6 +231,13 @@ fn main() -> tokenizer::Result<()> {
                 .build())
         }));
 
+        httpd.route_static(
+            "",
+            "text/html",
+            include_str!("index.html").to_string()
+        );
+
+        println!("starting server at http://127.0.0.1:{}", port);
         httpd.serve(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port))
             .unwrap();
     }
