@@ -1,10 +1,14 @@
 mod model;
 use std::collections::BTreeMap;
+use std::fs::read;
+use std::net::{SocketAddrV4, Ipv4Addr};
+use std::path::Path;
 
 use candle_core::Module;
 use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
 use tokenizers::tokenizer::{Result, Tokenizer};
+use xjbutil::minhttpd::{MinHttpd, HttpUri, HttpHeaders, HttpParams, HttpBody, HttpResponse};
 
 pub fn load_image224<P: AsRef<std::path::Path>>(p: P) -> candle_core::Result<Tensor> {
     let img = image::io::Reader::open(p)?
@@ -135,11 +139,46 @@ fn cos_sim(e_i: Tensor, e_j: Tensor) -> Result<f32> {
     Ok(sum_ij / (sum_i2 * sum_j2).sqrt())
 }
 
+fn api_get_image(
+    _uri: HttpUri,
+    headers: HttpHeaders,
+    params: HttpParams,
+    body: HttpBody
+) -> Result<HttpResponse, Box<dyn Error>> {
+    let image_path = params.get("path")
+        .ok_or("missing parameter 'path'")?
+        .trim();
+    let content_type = if image_path.ends_with(".png") {
+        "image/png"
+    } else if image_path.ends_with(".jpeg") || image_path.ends_with(".jpg") {
+        "image/jpeg"
+    } else {
+        return Err("invalid image path".into());
+    };
+
+    if image_path.contains("..") {
+        return Err("invalid image path".into());
+    }
+
+    let path = Path::new(image_path);
+    if path.is_absolute() {
+        return Err("invalid image path".into());
+    }
+
+    let content = read(path)?;
+    return Ok(HttpResponse::builder()
+        .set_code(200)
+        .add_header("Content-Type", content_type)
+        .set_payload_raw(content))
+}
+
 fn main() -> Result<()> {
     let mut database = load_database();
     let arg1 = std::env::args().nth(1);
     let arg2 = std::env::args().nth(2);
-    if arg1 == Some("add".to_string()) && arg2.is_some() {
+    
+    let arg1 = arg1.as_ref();
+    if arg1 == Some("add") && arg2.is_some() {
         let weights =
             unsafe { candle_core::safetensors::MmapedFile::new("clip/model.safetensors")? };
         let weights = weights.deserialize()?;
@@ -148,7 +187,7 @@ fn main() -> Result<()> {
         command_add_image(&mut database, &arg2.unwrap(), &model);
         save_database(&database);
         return Ok(());
-    } else if arg1 == Some("find".to_string()) && arg2.is_some() {
+    } else if arg1 == Some("find") && arg2.is_some() {
         let weights =
             unsafe { candle_core::safetensors::MmapedFile::new("clip/model.safetensors")? };
         let weights = weights.deserialize()?;
@@ -157,45 +196,36 @@ fn main() -> Result<()> {
         let tokenizer = Tokenizer::from_file("./clip/tokenizer.json")?;
         command_find_image(&mut database, &model, &tokenizer, &arg2.unwrap());
         return Ok(());
+    } else if arg1.as_ref() == Some("serve") && arg2.is_some() {
+        let weights =
+        unsafe { candle_core::safetensors::MmapedFile::new("clip/model.safetensors")? };
+        let weights = weights.deserialize()?;
+        let vb = VarBuilder::from_safetensors(vec![weights], DType::F32, &Device::Cpu);
+        let model = model::ClipTextTransformer::new(vb, &model::Config::clip())?;
+        let tokenizer = Tokenizer::from_file("./clip/tokenizer.json")?;
+
+        let port = arg2.parse()?;
+        let mut httpd = MinHttpd::new();
+
+        httpd.route_fn("/api/getImage", api_get_image);
+
+        httpd.route("/api/query", Box::new(move |_, headers, params, body| {
+            let query_text = params.get("text")
+                .ok_or("missing parameter 'text'")?
+                .trim();
+
+            // TODO query the "database"
+
+            Ok(HttpResponse::builder()
+                .set_code(200)
+                .set_payload("not implemented yet")
+                .build())
+        }));
+
+        httpd.serve(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port))
+            .unwrap();
     }
     println!("usage: clip add <path> | clip find <text>");
-    Ok(())
-}
-
-fn main2() -> Result<()> {
-    // get args
-    let image_path = std::env::args()
-        .nth(1)
-        .expect("please provide an image path");
-    let text = std::env::args().nth(2).expect("please provide a text");
-
-    let tokenizer = Tokenizer::from_file("./clip/tokenizer.json")?;
-    let encoding = tokenizer.encode(text, true)?;
-    // println!("{:?}", encoding.get_ids());
-    let weights = unsafe { candle_core::safetensors::MmapedFile::new("clip/model.safetensors")? };
-    let weights = weights.deserialize()?;
-    let vb = VarBuilder::from_safetensors(vec![weights], DType::F32, &Device::Cpu);
-
-    let text_model = model::ClipTextTransformer::new(vb.clone(), &model::Config::clip())?;
-    let encoding: Vec<_> = encoding
-        .get_ids()
-        .iter()
-        .copied()
-        .chain(std::iter::repeat(0))
-        .take(77)
-        .collect();
-    let output1 = text_model.forward(&Tensor::from_vec(encoding, (1, 77), &Device::Cpu)?)?;
-    // println!("output1 = {}", output1);
-
-    let vision_model = model::ClipVisionTransformer::new(vb, &model::Config::vision())?;
-    let img = load_image224(image_path)?.unsqueeze(0)?;
-    // let img = Tensor::zeros((1, 3, 224, 224), DType::F32, &Device::Cpu)?;
-    let output2 = vision_model.forward(&img)?;
-    // println!("output2 = {}", output2);
-
-    let similarity = cos_sim(output1, output2)?;
-    println!("similarity = {}", similarity);
-
     Ok(())
 }
 

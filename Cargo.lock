@@ -659,6 +659,7 @@ dependencies = [
  "rmp-serde",
  "serde",
  "tokenizers",
+ "xjbutil",
 ]
 
 [[package]]
@@ -1337,6 +1338,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "unchecked_unwrap"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3225965522cd8ec8a857c1496adf6c17ecb9c0de554a09dbdaa89080bbb74088"
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1572,6 +1579,15 @@ name = "windows_x86_64_msvc"
 version = "0.48.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed94fce61571a4006852b7389a063ab983c02eb1bb37b47f8272ce92d06d9538"
+
+[[package]]
+name = "xjbutil"
+version = "0.9.0-ECHO"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df2512f503fedf54b9530ff4be2d54ba1825b69b01cdbee78f6095595433ed62"
+dependencies = [
+ "unchecked_unwrap",
+]
 
 [[package]]
 name = "zip"
