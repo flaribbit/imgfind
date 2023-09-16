@@ -50,12 +50,12 @@ fn add_image_feature(
     Ok(())
 }
 
-fn find_image(
-    database: &mut Database,
+fn find_image<'a>(
+    database: &'a mut Database,
     model: &model::ClipTextTransformer,
     tokenizer: &Tokenizer,
     text: &str,
-) -> Result<Vec<(String, f32)>> {
+) -> Result<Vec<(&'a String, f32)>> {
     let mut text_ids = [0u32; 77];
     let encoding = tokenizer.encode(text, true)?;
     let encoding_len = encoding.get_ids().len().min(77);
@@ -65,10 +65,10 @@ fn find_image(
         .unsqueeze(0)?
         .to_vec1()?;
     let feature = normalize(&feature);
-    let mut result: Vec<(String, f32)> = Vec::new();
+    let mut result = Vec::new();
     for (path, embedding) in database.iter() {
         let similarity = dot_product(embedding, &feature);
-        result.push((path.clone(), similarity));
+        result.push((path, similarity));
     }
     result.sort_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap());
     Ok(result)
