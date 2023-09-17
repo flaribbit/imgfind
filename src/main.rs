@@ -153,14 +153,14 @@ fn api_get_image(
         return Err("invalid image path".into());
     };
 
-    if image_path.contains("..") {
-        return Err("invalid image path".into());
-    }
+    // if image_path.contains("..") {
+    //     return Err("invalid image path".into());
+    // }
 
     let path = Path::new(image_path);
-    if path.is_absolute() {
-        return Err("invalid image path".into());
-    }
+    // if path.is_absolute() {
+    //     return Err("invalid image path".into());
+    // }
 
     let content = read(path)?;
     Ok(HttpResponse::builder()
