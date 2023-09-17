@@ -7,6 +7,7 @@
 #result{
   display: flex;
   column-gap: 8px;
+  flex-wrap: wrap;
 }
 .grid{
   display: flex;
@@ -23,41 +24,46 @@
   max-width: 100%;
   max-height: 100%;
 }
+.grid a{
+  overflow-wrap: anywhere;
+  width: 200px;
+}
 </style>
 </head>
 <body>
   <h2>imgfind</h2>
   <div>
-    <input type="text">
-    <button>Search</button>
+    <input id="input" type="text">
+    <button id="search">Search</button>
   </div>
+  <br />
   <div id="result">
     <!--  -->
   </div>
 <script>
 let result_list = [
-  [0.2, '../1.jpg'],
-  [0.1, '../2.png'],
 ];
 const render = ()=>{
   let html = '';
   for(let i = 0; i < result_list.length; i++) {
-    const [score, url] = result_list[i];
+    const [url, score] = result_list[i];
+    const requestUrl = `/api/getImage?path=${url}`;
     html += `
 <div class="grid">
   <div class="wrapper">
-    <img src="${url}">
+    <img src="${requestUrl}">
   </div>
   <div>${score}</div>
-  <div>${url}</div>
+  <a href="${requestUrl}">${url}</a>
 </div>`;
   }
   document.getElementById('result').innerHTML = html;
 };
 render();
+const search=document.getElementById('search');
 search.onclick = async ()=>{
-  let text = document.querySelector('input').value;
-  let res = await fetch(`http://localhost:5000/search?text=${text}`);
+  let text = document.getElementById('input').value;
+  let res = await fetch(`/api/search?text=${text}`);
   result_list = await res.json();
   render();
 };
