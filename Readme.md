@@ -4,7 +4,7 @@
 
 ## 使用方法
 
-1. 为 `/some/path` 中的图片文件创建 embeddings，以便搜索：
+1. 为目录中的所有图片文件创建 embeddings，以便搜索：
 ```bash
 ./imgfind add 目录
 ```
@@ -13,8 +13,6 @@
 ./imgfind serve 端口
 ```
 
-## 其他文件
+## 模型
 
-权重和 `tokenizer.json`：
-
-[openai/clip-vit-base-patch32](https://huggingface.co/openai/clip-vit-base-patch32)
+在 [这里](https://github.com/flaribbit/imgfind/releases/download/model/clip.zip) 下载模型，解压到 `clip` 目录中。
