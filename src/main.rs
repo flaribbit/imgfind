@@ -2,7 +2,7 @@ mod model;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs::read;
-use std::net::{SocketAddrV4, Ipv4Addr};
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -12,13 +12,47 @@ use candle_nn::VarBuilder;
 use serde_json;
 use tokenizers::tokenizer;
 use tokenizers::tokenizer::Tokenizer;
-use xjbutil::minhttpd::{MinHttpd, HttpUri, HttpHeaders, HttpParams, HttpBody, HttpResponse};
+use xjbutil::minhttpd::{HttpBody, HttpHeaders, HttpParams, HttpResponse, HttpUri, MinHttpd};
 
-pub fn load_image224<P: AsRef<std::path::Path>>(p: P) -> candle_core::Result<Tensor> {
-    let img = image::io::Reader::open(p)?
-        .decode()
-        .map_err(candle_core::Error::wrap)?
-        .resize_to_fill(224, 224, image::imageops::FilterType::Triangle);
+fn load_heic(p: &str) -> image::DynamicImage {
+    use libheif_rs::{ColorSpace, HeifContext, LibHeif, RgbChroma};
+    let lib_heif = LibHeif::new();
+    let ctx = HeifContext::read_from_file(p).expect("failed to read file");
+    let handle = ctx.primary_image_handle().expect("failed to read image");
+    // Decode the image
+    let image = lib_heif
+        .decode(&handle, ColorSpace::Rgb(RgbChroma::Rgb), None)
+        .expect("failed to decode image");
+    let interleaved_plane = image.planes().interleaved.unwrap();
+    image::DynamicImage::ImageRgb8(
+        image::RgbImage::from_raw(
+            handle.width() as u32,
+            handle.height() as u32,
+            interleaved_plane.data.to_vec(),
+        )
+        .unwrap(),
+    )
+}
+
+fn get_extension<P: AsRef<std::path::Path>>(p: P) -> String {
+    p.as_ref()
+        .extension()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_lowercase()
+}
+
+fn load_image224(p: &str) -> candle_core::Result<Tensor> {
+    let extension = get_extension(p);
+    let img = if extension == "heic" {
+        load_heic(&p)
+    } else {
+        image::io::Reader::open(p)?
+            .decode()
+            .map_err(candle_core::Error::wrap)?
+    }
+    .resize_to_fill(224, 224, image::imageops::FilterType::Triangle);
     let img = img.to_rgb8();
     let data = img.into_raw();
     let data = Tensor::from_vec(data, (224, 224, 3), &Device::Cpu)?.permute((2, 0, 1))?;
@@ -67,9 +101,11 @@ fn get_images(path: &str) -> Vec<String> {
             if path.is_dir() {
                 recurse(&path.to_string_lossy(), result);
             } else {
+                let extension = get_extension(&path);
                 let path = path.to_string_lossy();
-                if path.ends_with(".jpg") || path.ends_with(".png") || path.ends_with(".jpeg") {
-                    result.push(path.to_string());
+                match extension.as_str() {
+                    "jpg" | "jpeg" | "png" | "heic" | "heif" => result.push(path.to_string()),
+                    _ => {}
                 }
             }
         }
@@ -105,6 +141,7 @@ fn find_image<'a>(
 fn command_add_image(database: &mut Database, path: &str, model: &model::ClipVisionTransformer) {
     let images = get_images(path);
     let len = images.len();
+    let mut count = 0;
     for (i, image) in images.iter().enumerate() {
         if database.contains_key(image) {
             println!("skipping {}/{} {}", i + 1, len, image);
@@ -112,6 +149,13 @@ fn command_add_image(database: &mut Database, path: &str, model: &model::ClipVis
         }
         println!("processing {}/{} {}", i + 1, len, image);
         add_image_feature(database, model, &image).expect("failed to add image");
+        count += 1;
+        // save database every 50 images
+        if count == 50 {
+            println!("saving database");
+            save_database(database);
+            count = 0;
+        }
     }
 }
 
@@ -140,17 +184,14 @@ fn api_get_image(
     _uri: HttpUri,
     _headers: HttpHeaders,
     params: HttpParams,
-    _body: HttpBody
+    _body: HttpBody,
 ) -> Result<HttpResponse, Box<dyn Error>> {
-    let image_path = params.get("path")
-        .ok_or("missing parameter 'path'")?
-        .trim();
-    let content_type = if image_path.ends_with(".png") {
-        "image/png"
-    } else if image_path.ends_with(".jpeg") || image_path.ends_with(".jpg") {
-        "image/jpeg"
-    } else {
-        return Err("invalid image path".into());
+    let image_path = params.get("path").ok_or("missing parameter 'path'")?.trim();
+    let content_type = match get_extension(image_path).as_str() {
+        "png" => "image/png",
+        "jpeg" | "jpg" => "image/jpeg",
+        "heic" | "heif" => "image/heif",
+        _ => return Err("invalid image path".into()),
     };
 
     // if image_path.contains("..") {
@@ -196,7 +237,7 @@ fn main() -> tokenizer::Result<()> {
         return Ok(());
     } else if arg1 == Some("serve") && arg2.is_some() {
         let weights =
-        unsafe { candle_core::safetensors::MmapedFile::new("clip/model.safetensors")? };
+            unsafe { candle_core::safetensors::MmapedFile::new("clip/model.safetensors")? };
         let weights = weights.deserialize()?;
         let vb = VarBuilder::from_safetensors(vec![weights], DType::F32, &Device::Cpu);
         let model = model::ClipTextTransformer::new(vb, &model::Config::clip())?;
@@ -211,34 +252,29 @@ fn main() -> tokenizer::Result<()> {
 
         httpd.route_fn("/api/getImage", api_get_image);
 
-        httpd.route("/api/search", Box::new(move |_, _, params, _| {
-            let query_text = params.get("text")
-                .ok_or("missing parameter 'text'")?
-                .trim();
+        httpd.route(
+            "/api/search",
+            Box::new(move |_, _, params, _| {
+                let query_text = params.get("text").ok_or("missing parameter 'text'")?.trim();
 
-            let query_result = find_image(&database, &model, &tokenizer, query_text)
-                .map_err(|e| format!("failed to query: {}", e))?;
+                let query_result = find_image(&database, &model, &tokenizer, query_text)
+                    .map_err(|e| format!("failed to query: {}", e))?;
 
-            let first_50_items = query_result
-                .iter()
-                .take(50)
-                .collect::<Vec<_>>();
+                let first_50_items = query_result.iter().take(50).collect::<Vec<_>>();
 
-            Ok(HttpResponse::builder()
-                .set_code(200)
-                .add_header("Content-Type", "application/json")
-                .set_payload(serde_json::to_string(&first_50_items)?)
-                .build())
-        }));
-
-        httpd.route_static(
-            "",
-            "text/html",
-            include_str!("index.html").to_string()
+                Ok(HttpResponse::builder()
+                    .set_code(200)
+                    .add_header("Content-Type", "application/json")
+                    .set_payload(serde_json::to_string(&first_50_items)?)
+                    .build())
+            }),
         );
 
+        httpd.route_static("", "text/html", include_str!("index.html").to_string());
+
         println!("starting server at http://127.0.0.1:{}", port);
-        httpd.serve(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port))
+        httpd
+            .serve(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port))
             .unwrap();
     }
     println!("usage: clip add <path> | clip find <text> | clip serve <port>");
