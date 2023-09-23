@@ -14,7 +14,7 @@ use tokenizers::tokenizer;
 use tokenizers::tokenizer::Tokenizer;
 use xjbutil::minhttpd::{HttpBody, HttpHeaders, HttpParams, HttpResponse, HttpUri, MinHttpd};
 
-fn load_heic(p: &str) -> image::DynamicImage {
+fn load_heif(p: &str) -> image::DynamicImage {
     use libheif_rs::{ColorSpace, HeifContext, LibHeif, RgbChroma};
     let lib_heif = LibHeif::new();
     let ctx = HeifContext::read_from_file(p).expect("failed to read file");
@@ -37,7 +37,7 @@ fn load_heic(p: &str) -> image::DynamicImage {
 fn get_extension<P: AsRef<std::path::Path>>(p: P) -> String {
     p.as_ref()
         .extension()
-        .unwrap()
+        .unwrap_or_default()
         .to_str()
         .unwrap()
         .to_lowercase()
@@ -45,8 +45,8 @@ fn get_extension<P: AsRef<std::path::Path>>(p: P) -> String {
 
 fn load_image224(p: &str) -> candle_core::Result<Tensor> {
     let extension = get_extension(p);
-    let img = if extension == "heic" {
-        load_heic(&p)
+    let img = if extension == "heic" || extension == "heif" {
+        load_heif(&p)
     } else {
         image::io::Reader::open(p)?
             .decode()
