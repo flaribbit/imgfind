@@ -2,7 +2,7 @@ mod model;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs::read;
-use std::net::{SocketAddrV4, Ipv4Addr};
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -12,7 +12,7 @@ use candle_nn::VarBuilder;
 use serde_json;
 use tokenizers::tokenizer;
 use tokenizers::tokenizer::Tokenizer;
-use xjbutil::minhttpd::{MinHttpd, HttpUri, HttpHeaders, HttpParams, HttpBody, HttpResponse};
+use xjbutil::minhttpd::{HttpBody, HttpHeaders, HttpParams, HttpResponse, HttpUri, MinHttpd};
 
 pub fn load_image224<P: AsRef<std::path::Path>>(p: P) -> candle_core::Result<Tensor> {
     let img = image::io::Reader::open(p)?
@@ -105,6 +105,7 @@ fn find_image<'a>(
 fn command_add_image(database: &mut Database, path: &str, model: &model::ClipVisionTransformer) {
     let images = get_images(path);
     let len = images.len();
+    let mut count = 0;
     for (i, image) in images.iter().enumerate() {
         if database.contains_key(image) {
             println!("skipping {}/{} {}", i + 1, len, image);
@@ -112,6 +113,13 @@ fn command_add_image(database: &mut Database, path: &str, model: &model::ClipVis
         }
         println!("processing {}/{} {}", i + 1, len, image);
         add_image_feature(database, model, &image).expect("failed to add image");
+        count += 1;
+        // save database every 50 images
+        if count == 50 {
+            println!("saving database");
+            save_database(database);
+            count = 0;
+        }
     }
 }
 
@@ -140,11 +148,9 @@ fn api_get_image(
     _uri: HttpUri,
     _headers: HttpHeaders,
     params: HttpParams,
-    _body: HttpBody
+    _body: HttpBody,
 ) -> Result<HttpResponse, Box<dyn Error>> {
-    let image_path = params.get("path")
-        .ok_or("missing parameter 'path'")?
-        .trim();
+    let image_path = params.get("path").ok_or("missing parameter 'path'")?.trim();
     let content_type = if image_path.ends_with(".png") {
         "image/png"
     } else if image_path.ends_with(".jpeg") || image_path.ends_with(".jpg") {
@@ -196,7 +202,7 @@ fn main() -> tokenizer::Result<()> {
         return Ok(());
     } else if arg1 == Some("serve") && arg2.is_some() {
         let weights =
-        unsafe { candle_core::safetensors::MmapedFile::new("clip/model.safetensors")? };
+            unsafe { candle_core::safetensors::MmapedFile::new("clip/model.safetensors")? };
         let weights = weights.deserialize()?;
         let vb = VarBuilder::from_safetensors(vec![weights], DType::F32, &Device::Cpu);
         let model = model::ClipTextTransformer::new(vb, &model::Config::clip())?;
@@ -211,34 +217,29 @@ fn main() -> tokenizer::Result<()> {
 
         httpd.route_fn("/api/getImage", api_get_image);
 
-        httpd.route("/api/search", Box::new(move |_, _, params, _| {
-            let query_text = params.get("text")
-                .ok_or("missing parameter 'text'")?
-                .trim();
+        httpd.route(
+            "/api/search",
+            Box::new(move |_, _, params, _| {
+                let query_text = params.get("text").ok_or("missing parameter 'text'")?.trim();
 
-            let query_result = find_image(&database, &model, &tokenizer, query_text)
-                .map_err(|e| format!("failed to query: {}", e))?;
+                let query_result = find_image(&database, &model, &tokenizer, query_text)
+                    .map_err(|e| format!("failed to query: {}", e))?;
 
-            let first_50_items = query_result
-                .iter()
-                .take(50)
-                .collect::<Vec<_>>();
+                let first_50_items = query_result.iter().take(50).collect::<Vec<_>>();
 
-            Ok(HttpResponse::builder()
-                .set_code(200)
-                .add_header("Content-Type", "application/json")
-                .set_payload(serde_json::to_string(&first_50_items)?)
-                .build())
-        }));
-
-        httpd.route_static(
-            "",
-            "text/html",
-            include_str!("index.html").to_string()
+                Ok(HttpResponse::builder()
+                    .set_code(200)
+                    .add_header("Content-Type", "application/json")
+                    .set_payload(serde_json::to_string(&first_50_items)?)
+                    .build())
+            }),
         );
 
+        httpd.route_static("", "text/html", include_str!("index.html").to_string());
+
         println!("starting server at http://127.0.0.1:{}", port);
-        httpd.serve(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port))
+        httpd
+            .serve(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port))
             .unwrap();
     }
     println!("usage: clip add <path> | clip find <text> | clip serve <port>");
