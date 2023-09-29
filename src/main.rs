@@ -3,7 +3,6 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs::read;
 use std::net::{Ipv4Addr, SocketAddrV4};
-use std::path::Path;
 use std::sync::Arc;
 
 use candle_core::Module;
@@ -187,23 +186,24 @@ fn api_get_image(
     _body: HttpBody,
 ) -> Result<HttpResponse, Box<dyn Error>> {
     let image_path = params.get("path").ok_or("missing parameter 'path'")?.trim();
-    let content_type = match get_extension(image_path).as_str() {
-        "png" => "image/png",
-        "jpeg" | "jpg" => "image/jpeg",
-        "heic" | "heif" => "image/heif",
+    let extension = get_extension(image_path);
+    let (content_type, content) = match extension.as_str() {
+        "png" => {
+            let content = read(image_path)?;
+            ("image/png", content)
+        }
+        "jpeg" | "jpg" => {
+            let content = read(image_path)?;
+            ("image/jpeg", content)
+        }
+        "heic" | "heif" => {
+            let img = load_heif(image_path);
+            let mut buffer = std::io::Cursor::new(Vec::new());
+            img.write_to(&mut buffer, image::ImageOutputFormat::Jpeg(90))?;
+            ("image/jpeg", buffer.into_inner())
+        }
         _ => return Err("invalid image path".into()),
     };
-
-    // if image_path.contains("..") {
-    //     return Err("invalid image path".into());
-    // }
-
-    let path = Path::new(image_path);
-    // if path.is_absolute() {
-    //     return Err("invalid image path".into());
-    // }
-
-    let content = read(path)?;
     Ok(HttpResponse::builder()
         .set_code(200)
         .add_header("Content-Type", content_type)
