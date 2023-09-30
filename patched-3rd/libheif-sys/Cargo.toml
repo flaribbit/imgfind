@@ -41,7 +41,7 @@ dependencies = ["libheif"]
 
 
 [package.metadata.vcpkg.target]
-x86_64-pc-windows-msvc = { triplet = "x64-windows-static-md", dependencies = ["libheif"] }
+x86_64-pc-windows-msvc = { triplet = "x64-windows-static", dependencies = ["libheif"] }
 
 
 [package.metadata.release]
