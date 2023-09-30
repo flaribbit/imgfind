@@ -15,6 +15,20 @@
 ./imgfind serve 端口
 ```
 
+## 编译问题
+
+windows 需要设置环境变量 `RUSTFLAGS=-Ctarget-feature=+crt-static`
+
+```
+$env:RUSTFLAGS='-Ctarget-feature=+crt-static'
+```
+
+android 需要设置环境变量 `RUSTFLAGS=-C target-feature=+fp16`
+
+```bash
+export RUSTFLAGS='-C target-feature=+fp16'
+```
+
 ## 模型
 
 在 [这里](https://github.com/flaribbit/imgfind/releases/download/model/clip.zip) 下载模型，解压到 `clip` 目录中。
@@ -35,3 +49,17 @@
 ## Model
 
 Download model from [here](https://github.com/flaribbit/imgfind/releases/download/model/clip.zip), then extract files into `clip` folder.
+
+## FAQ during build process
+
+On windows you need to set env `RUSTFLAGS=-Ctarget-feature=+crt-static`
+
+```
+$env:RUSTFLAGS='-Ctarget-feature=+crt-static'
+```
+
+On android you need to set env `RUSTFLAGS=-C target-feature=+fp16`
+
+```bash
+export RUSTFLAGS='-C target-feature=+fp16'
+```
