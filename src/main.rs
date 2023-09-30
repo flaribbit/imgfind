@@ -1,13 +1,12 @@
 mod model;
+use candle_core::Module;
+use candle_core::{DType, Device, Tensor};
+use candle_nn::VarBuilder;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs::read;
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::Arc;
-use candle_core::Module;
-use candle_core::{DType, Device, Tensor};
-use candle_nn::VarBuilder;
-use serde_json;
 use tokenizers::tokenizer;
 use tokenizers::tokenizer::Tokenizer;
 use xjbutil::minhttpd::{HttpBody, HttpHeaders, HttpParams, HttpResponse, HttpUri, MinHttpd};
@@ -24,8 +23,8 @@ fn load_heif(p: &str) -> image::DynamicImage {
     let interleaved_plane = image.planes().interleaved.unwrap();
     image::DynamicImage::ImageRgb8(
         image::RgbImage::from_raw(
-            handle.width() as u32,
-            handle.height() as u32,
+            handle.width(),
+            handle.height(),
             interleaved_plane.data.to_vec(),
         )
         .unwrap(),
@@ -44,7 +43,7 @@ fn get_extension<P: AsRef<std::path::Path>>(p: P) -> String {
 fn load_image224(p: &str) -> candle_core::Result<Tensor> {
     let extension = get_extension(p);
     let img = if extension == "heic" || extension == "heif" {
-        load_heif(&p)
+        load_heif(p)
     } else {
         image::io::Reader::open(p)?
             .decode()
@@ -146,7 +145,7 @@ fn command_add_image(database: &mut Database, path: &str, model: &model::ClipVis
             continue;
         }
         println!("processing {}/{} {}", i + 1, len, image);
-        add_image_feature(database, model, &image).expect("failed to add image");
+        add_image_feature(database, model, image).expect("failed to add image");
         count += 1;
         // save database every 50 images
         if count == 50 {
@@ -164,8 +163,8 @@ fn command_find_image(
     text: &str,
 ) {
     let result = find_image(database, model, tokenizer, text).expect("failed to find image");
-    for (i, (path, similarity)) in result.iter().enumerate() {
-        println!("{:2} {:.4} {}", i, similarity, path);
+    for (path, similarity) in result.iter().take(50) {
+        println!("{:.4} {}", similarity, path);
     }
 }
 
@@ -185,8 +184,7 @@ fn api_get_image(
     _body: HttpBody,
 ) -> Result<HttpResponse, Box<dyn Error>> {
     let image_path = params.get("path").ok_or("missing parameter 'path'")?.trim();
-    let extension = get_extension(image_path);
-    let (content_type, content) = match extension.as_str() {
+    let (content_type, content) = match get_extension(image_path).as_str() {
         "png" => {
             let content = read(image_path)?;
             ("image/png", content)
@@ -215,7 +213,7 @@ fn main() -> tokenizer::Result<()> {
     let arg1 = std::env::args().nth(1);
     let arg2 = std::env::args().nth(2);
 
-    let arg1 = arg1.as_ref().map(String::as_str);
+    let arg1 = arg1.as_deref();
     if arg1 == Some("add") && arg2.is_some() {
         let weights =
             unsafe { candle_core::safetensors::MmapedFile::new("clip/model.safetensors")? };
@@ -242,7 +240,7 @@ fn main() -> tokenizer::Result<()> {
         let model = model::ClipTextTransformer::new(vb, &model::Config::clip())?;
         let tokenizer = Tokenizer::from_file("./clip/tokenizer.json")?;
 
-        let port = arg2.unwrap().parse::<u16>()?;
+        let port: u16 = arg2.unwrap().parse()?;
         let mut httpd = MinHttpd::new();
 
         let database = Arc::new(database);

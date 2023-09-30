@@ -1,5 +1,6 @@
 /target
 /clip
+.vscode
 __pycache__
 venv
 database.bin
