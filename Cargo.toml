@@ -1,15 +1,18 @@
 [package]
 name = "imgfind"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+heif = ["libheif-rs"]
 
 [dependencies]
 candle-core = "0.2.1"
 candle-nn = "0.2.1"
 image = "0.24.7"
-libheif-rs = "0.22.0"
+libheif-rs = { version = "0.22.0", optional = true }
 rmp-serde = "1.1.2"
 serde = "1.0.188"
 serde_json = "1"

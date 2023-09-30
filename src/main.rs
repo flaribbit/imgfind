@@ -11,6 +11,7 @@ use tokenizers::tokenizer;
 use tokenizers::tokenizer::Tokenizer;
 use xjbutil::minhttpd::{HttpBody, HttpHeaders, HttpParams, HttpResponse, HttpUri, MinHttpd};
 
+#[cfg(feature = "heif")]
 fn load_heif(p: &str) -> image::DynamicImage {
     use libheif_rs::{ColorSpace, HeifContext, LibHeif, RgbChroma};
     let lib_heif = LibHeif::new();
@@ -43,6 +44,9 @@ fn get_extension<P: AsRef<std::path::Path>>(p: P) -> String {
 fn load_image224(p: &str) -> candle_core::Result<Tensor> {
     let extension = get_extension(p);
     let img = if extension == "heic" || extension == "heif" {
+        #[cfg(not(feature = "heif"))]
+        return Err(candle_core::Error::Msg("heif support not enabled".into()));
+        #[cfg(feature = "heif")]
         load_heif(p)
     } else {
         image::io::Reader::open(p)?
@@ -193,6 +197,9 @@ fn api_get_image(
             let content = read(image_path)?;
             ("image/jpeg", content)
         }
+        #[cfg(not(feature = "heif"))]
+        "heic" | "heif" => return Err("heif support not enabled".into()),
+        #[cfg(feature = "heif")]
         "heic" | "heif" => {
             let img = load_heif(image_path);
             let mut buffer = std::io::Cursor::new(Vec::new());
