@@ -847,8 +847,6 @@ checksum = "b4668fb0ea861c1df094127ac5f1da3409a82116a4ba74fca2e58ef927159bb3"
 [[package]]
 name = "libheif-rs"
 version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f644fa9c774f17b545fb3c09f8f1a29cc09385a5504c03c6a158878e9522acd"
 dependencies = [
  "enumn",
  "four-cc",
@@ -859,8 +857,6 @@ dependencies = [
 [[package]]
 name = "libheif-sys"
 version = "2.0.0+1.16.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d48ca341b8042e9522ff1ab892a0f049ec28d3a9a6924b48aa9f3e32ae73aab"
 dependencies = [
  "bindgen",
  "libc",

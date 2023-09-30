@@ -1,0 +1,63 @@
+[package]
+name = "libheif-rs"
+version = "0.22.0"
+authors = ["Kirill Kuzminykh <cykooz@gmail.com>"]
+edition = "2021"
+description = "Safe wrapper around the libheif-sys crate for parsing heif/heic files"
+readme = "README.md"
+keywords = ["heic", "heif", "libheif"]
+license = "MIT"
+repository = "https://github.com/cykooz/libheif-rs"
+documentation = "https://docs.rs/crate/libheif-rs"
+
+
+[dependencies]
+enumn = "0.1"
+four-cc = "0.3"
+libc = "0.2"
+
+
+[features]
+default = ["use-bindgen"]
+# Use bindgen to generate bindings for libheif,
+# instead using of pre-generated bindings.rs.
+use-bindgen = ["libheif-sys/use-bindgen"]
+
+
+[dependencies.libheif-sys]
+version = "2"
+default-features = false
+
+
+[dev-dependencies]
+kamadak-exif = "0.5"
+tempfile = "3"
+
+
+[profile.release]
+lto = true
+opt-level = 3
+
+
+[profile.release.package.libheif-rs]
+codegen-units = 1
+
+
+[package.metadata.vcpkg]
+git = "https://github.com/microsoft/vcpkg"
+tag = "2023.08.09"
+dependencies = ["libheif"]
+
+
+[package.metadata.vcpkg.target]
+x86_64-pc-windows-msvc = { triplet = "x64-windows-static-md", dependencies = ["libheif"] }
+
+
+[package.metadata.release]
+pre-release-replacements = [
+    { file = "CHANGELOG.md", search = "Unreleased", replace = "{{version}}" },
+    { file = "CHANGELOG.md", search = "ReleaseDate", replace = "{{date}}" }
+]
+
+# Header of next release in CHANGELOG.md:
+#   ## [Unreleased] - ReleaseDate
