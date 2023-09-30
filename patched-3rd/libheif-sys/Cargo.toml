@@ -1,0 +1,54 @@
+[package]
+name = "libheif-sys"
+version = "2.0.0+1.16.2"
+authors = ["Kirill Kuzminykh <cykooz@gmail.com>"]
+edition = "2018"
+description = "libheif bindings"
+readme = "README.md"
+repository = "https://github.com/cykooz/libheif-sys"
+keywords = ["heic", "heif", "libheif"]
+license = "MIT"
+documentation = "https://docs.rs/crate/libheif-sys"
+links = "heif"
+build = "build.rs"
+
+
+[dependencies]
+libc = "0.2"
+
+
+[features]
+default = ["use-bindgen"]
+# Use bindgen to generate bindings for libheif,
+# instead using of pre-generated bindings.rs.
+use-bindgen = ["dep:bindgen"]
+
+
+[build-dependencies]
+bindgen = { version = "0.68", optional = true }
+pkg-config = "0.3"
+
+
+[target.'cfg(windows)'.build-dependencies]
+vcpkg = "0.2"
+walkdir = "2"
+
+
+[package.metadata.vcpkg]
+git = "https://github.com/microsoft/vcpkg"
+tag = "2023.08.09"
+dependencies = ["libheif"]
+
+
+[package.metadata.vcpkg.target]
+x86_64-pc-windows-msvc = { triplet = "x64-windows-static", dependencies = ["libheif"] }
+
+
+[package.metadata.release]
+pre-release-replacements = [
+    { file = "CHANGELOG.md", search = "Unreleased", replace = "{{version}}" },
+    { file = "CHANGELOG.md", search = "ReleaseDate", replace = "{{date}}" }
+]
+
+# Header of next release in CHANGELOG.md:
+#   ## [Unreleased] - ReleaseDate

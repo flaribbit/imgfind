@@ -3,9 +3,7 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs::read;
 use std::net::{Ipv4Addr, SocketAddrV4};
-use std::path::Path;
 use std::sync::Arc;
-
 use candle_core::Module;
 use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
@@ -14,11 +12,45 @@ use tokenizers::tokenizer;
 use tokenizers::tokenizer::Tokenizer;
 use xjbutil::minhttpd::{HttpBody, HttpHeaders, HttpParams, HttpResponse, HttpUri, MinHttpd};
 
-pub fn load_image224<P: AsRef<std::path::Path>>(p: P) -> candle_core::Result<Tensor> {
-    let img = image::io::Reader::open(p)?
-        .decode()
-        .map_err(candle_core::Error::wrap)?
-        .resize_to_fill(224, 224, image::imageops::FilterType::Triangle);
+fn load_heif(p: &str) -> image::DynamicImage {
+    use libheif_rs::{ColorSpace, HeifContext, LibHeif, RgbChroma};
+    let lib_heif = LibHeif::new();
+    let ctx = HeifContext::read_from_file(p).expect("failed to read file");
+    let handle = ctx.primary_image_handle().expect("failed to read image");
+    // Decode the image
+    let image = lib_heif
+        .decode(&handle, ColorSpace::Rgb(RgbChroma::Rgb), None)
+        .expect("failed to decode image");
+    let interleaved_plane = image.planes().interleaved.unwrap();
+    image::DynamicImage::ImageRgb8(
+        image::RgbImage::from_raw(
+            handle.width() as u32,
+            handle.height() as u32,
+            interleaved_plane.data.to_vec(),
+        )
+        .unwrap(),
+    )
+}
+
+fn get_extension<P: AsRef<std::path::Path>>(p: P) -> String {
+    p.as_ref()
+        .extension()
+        .unwrap_or_default()
+        .to_str()
+        .unwrap()
+        .to_lowercase()
+}
+
+fn load_image224(p: &str) -> candle_core::Result<Tensor> {
+    let extension = get_extension(p);
+    let img = if extension == "heic" || extension == "heif" {
+        load_heif(&p)
+    } else {
+        image::io::Reader::open(p)?
+            .decode()
+            .map_err(candle_core::Error::wrap)?
+    }
+    .resize_to_fill(224, 224, image::imageops::FilterType::Triangle);
     let img = img.to_rgb8();
     let data = img.into_raw();
     let data = Tensor::from_vec(data, (224, 224, 3), &Device::Cpu)?.permute((2, 0, 1))?;
@@ -67,9 +99,11 @@ fn get_images(path: &str) -> Vec<String> {
             if path.is_dir() {
                 recurse(&path.to_string_lossy(), result);
             } else {
+                let extension = get_extension(&path);
                 let path = path.to_string_lossy();
-                if path.ends_with(".jpg") || path.ends_with(".png") || path.ends_with(".jpeg") {
-                    result.push(path.to_string());
+                match extension.as_str() {
+                    "jpg" | "jpeg" | "png" | "heic" | "heif" => result.push(path.to_string()),
+                    _ => {}
                 }
             }
         }
@@ -151,24 +185,24 @@ fn api_get_image(
     _body: HttpBody,
 ) -> Result<HttpResponse, Box<dyn Error>> {
     let image_path = params.get("path").ok_or("missing parameter 'path'")?.trim();
-    let content_type = if image_path.ends_with(".png") {
-        "image/png"
-    } else if image_path.ends_with(".jpeg") || image_path.ends_with(".jpg") {
-        "image/jpeg"
-    } else {
-        return Err("invalid image path".into());
+    let extension = get_extension(image_path);
+    let (content_type, content) = match extension.as_str() {
+        "png" => {
+            let content = read(image_path)?;
+            ("image/png", content)
+        }
+        "jpeg" | "jpg" => {
+            let content = read(image_path)?;
+            ("image/jpeg", content)
+        }
+        "heic" | "heif" => {
+            let img = load_heif(image_path);
+            let mut buffer = std::io::Cursor::new(Vec::new());
+            img.write_to(&mut buffer, image::ImageOutputFormat::Jpeg(90))?;
+            ("image/jpeg", buffer.into_inner())
+        }
+        _ => return Err("invalid image path".into()),
     };
-
-    // if image_path.contains("..") {
-    //     return Err("invalid image path".into());
-    // }
-
-    let path = Path::new(image_path);
-    // if path.is_absolute() {
-    //     return Err("invalid image path".into());
-    // }
-
-    let content = read(path)?;
     Ok(HttpResponse::builder()
         .set_code(200)
         .add_header("Content-Type", content_type)

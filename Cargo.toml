@@ -9,8 +9,13 @@ edition = "2021"
 candle-core = "0.2.1"
 candle-nn = "0.2.1"
 image = "0.24.7"
+libheif-rs = "0.22.0"
 rmp-serde = "1.1.2"
 serde = "1.0.188"
 serde_json = "1"
 tokenizers = "0.14.0"
 xjbutil = { version = "0.9.0-ECHO", default-features = false, features = ["minhttpd"] }
+
+[patch.crates-io]
+libheif-rs = { path = "./patched-3rd/libheif-rs" }
+libheif-sys = { path = "./patched-3rd/libheif-sys" }
