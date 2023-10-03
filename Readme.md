@@ -4,6 +4,16 @@
 
 [English version](#local-image-search-tool-based-on-clip)
 
+## 安装
+
+windows 推荐使用 scoop 一键安装
+
+```
+scoop install https://raw.githubusercontent.com/flaribbit/imgfind/master/scoop/imgfind.json
+```
+
+android 可以使用 termux 下载最新 release 运行，其他系统目前只能自己编译。
+
 ## 使用方法
 
 1. 为目录中的所有图片文件创建 embeddings，以便搜索：
@@ -33,7 +43,25 @@ export RUSTFLAGS='-C target-feature=+fp16'
 
 在 [这里](https://github.com/flaribbit/imgfind/releases/download/model/clip.zip) 下载模型，解压到 `clip` 目录中。
 
+```
+ .
+├──  clip
+│   ├──  model.safetensors
+│   └──  tokenizer.json
+└──  imgfind.exe
+```
+
 # Local image search tool based on CLIP
+
+## Install
+
+For windows users, it is recommend to use scoop
+
+```
+scoop install https://raw.githubusercontent.com/flaribbit/imgfind/master/scoop/imgfind.json
+```
+
+For android users, you can download latest release in termux. For other platforms, you may clone this repo and compile it yourself.
 
 ## Usage
 
@@ -50,12 +78,20 @@ export RUSTFLAGS='-C target-feature=+fp16'
 
 Download model from [here](https://github.com/flaribbit/imgfind/releases/download/model/clip.zip), then extract files into `clip` folder.
 
+```
+ .
+├──  clip
+│   ├──  model.safetensors
+│   └──  tokenizer.json
+└──  imgfind.exe
+```
+
 ## FAQ during build process
 
-On windows you need to set env `RUSTFLAGS=-Ctarget-feature=+crt-static`
+On windows you need to set env `RUSTFLAGS=-C target-feature=+crt-static`
 
 ```
-$env:RUSTFLAGS='-Ctarget-feature=+crt-static'
+$env:RUSTFLAGS='-C target-feature=+crt-static'
 ```
 
 On android you need to set env `RUSTFLAGS=-C target-feature=+fp16`
