@@ -1,0 +1,15 @@
+{
+    "version": "0.2.0",
+    "description": "Rust + candle + CLIP 实现的本地图片搜索工具",
+    "homepage": "https://github.com/flaribbit/imgfind",
+    "license": "MIT",
+    "url": "https://github.com/flaribbit/imgfind/releases/download/v0.2/win64.zip",
+    "hash": "80f124c2b950c1c25730f65cc0e4272ce65ab8516f2c76ccf49931af1e2ae671",
+    "bin": "imgfind.exe",
+    "checkver": {
+        "github": "https://github.com/flaribbit/imgfind"
+    },
+    "autoupdate": {
+        "url": "https://github.com/flaribbit/imgfind/releases/download/v$version/win64.zip"
+    }
+}
