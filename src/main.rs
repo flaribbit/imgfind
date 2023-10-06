@@ -12,24 +12,25 @@ use tokenizers::tokenizer::Tokenizer;
 use xjbutil::minhttpd::{HttpBody, HttpHeaders, HttpParams, HttpResponse, HttpUri, MinHttpd};
 
 #[cfg(feature = "heif")]
-fn load_heif(p: &str) -> image::DynamicImage {
+fn load_heif(p: &str) -> candle_core::Result<image::DynamicImage> {
+    use candle_core::Error;
     use libheif_rs::{ColorSpace, HeifContext, LibHeif, RgbChroma};
     let lib_heif = LibHeif::new();
-    let ctx = HeifContext::read_from_file(p).expect("failed to read file");
-    let handle = ctx.primary_image_handle().expect("failed to read image");
+    let ctx = HeifContext::read_from_file(p).map_err(Error::wrap)?;
+    let handle = ctx.primary_image_handle().map_err(Error::wrap)?;
     // Decode the image
     let image = lib_heif
         .decode(&handle, ColorSpace::Rgb(RgbChroma::Rgb), None)
         .expect("failed to decode image");
     let interleaved_plane = image.planes().interleaved.unwrap();
-    image::DynamicImage::ImageRgb8(
+    Ok(image::DynamicImage::ImageRgb8(
         image::RgbImage::from_raw(
             handle.width(),
             handle.height(),
             interleaved_plane.data.to_vec(),
         )
         .unwrap(),
-    )
+    ))
 }
 
 fn get_extension<P: AsRef<std::path::Path>>(p: P) -> String {
@@ -47,7 +48,7 @@ fn load_image224(p: &str) -> candle_core::Result<Tensor> {
         #[cfg(not(feature = "heif"))]
         return Err(candle_core::Error::Msg("heif support not enabled".into()));
         #[cfg(feature = "heif")]
-        load_heif(p)
+        load_heif(p)?
     } else {
         image::io::Reader::open(p)?
             .decode()
@@ -83,10 +84,8 @@ fn add_image_feature(
     database: &mut Database,
     model: &model::ClipVisionTransformer,
     path: &str,
-) -> tokenizer::Result<()> {
-    let img = load_image224(path)
-        .expect("failed to load image")
-        .unsqueeze(0)?;
+) -> candle_core::Result<()> {
+    let img = load_image224(path)?.unsqueeze(0)?;
     let output: Vec<f32> = model.forward(&img)?.squeeze(0)?.to_vec1()?;
     let output = normalize(&output);
     database.insert(path.to_string(), output);
@@ -149,7 +148,9 @@ fn command_add_image(database: &mut Database, path: &str, model: &model::ClipVis
             continue;
         }
         println!("processing {}/{} {}", i + 1, len, image);
-        add_image_feature(database, model, image).expect("failed to add image");
+        if let Err(e) = add_image_feature(database, model, image) {
+            println!("failed to process {}: {}", image, e);
+        }
         count += 1;
         // save database every 50 images
         if count == 50 {
@@ -201,7 +202,7 @@ fn api_get_image(
         "heic" | "heif" => return Err("heif support not enabled".into()),
         #[cfg(feature = "heif")]
         "heic" | "heif" => {
-            let img = load_heif(image_path);
+            let img = load_heif(image_path)?;
             let mut buffer = std::io::Cursor::new(Vec::new());
             img.write_to(&mut buffer, image::ImageOutputFormat::Jpeg(90))?;
             ("image/jpeg", buffer.into_inner())
