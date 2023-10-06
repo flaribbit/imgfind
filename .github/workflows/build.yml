@@ -18,7 +18,7 @@ jobs:
       uses: actions/cache@v3
       with:
         key: vcpkg-win64
-        path: ${{ env.VCPKG_ROOT }}/installed
+        path: ${{ env.VCPKG_INSTALLATION_ROOT }}/installed
     - name: setup vcpkg
       run: vcpkg install libheif:x64-windows-static
     - name: Build
