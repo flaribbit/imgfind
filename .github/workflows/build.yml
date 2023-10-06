@@ -1,0 +1,22 @@
+name: Build
+
+on:
+  push:
+    branches: [ "master", "ci" ]
+  pull_request:
+    branches: [ "master", "ci" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: setup vcpkg
+      run: vcpkg install libheif:x64-windows-static
+    - name: Build
+      run: |
+        $env:RUSTFLAGS='-Ctarget-feature=+crt-static'
+        cargo build --release --all-features
