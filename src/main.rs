@@ -243,6 +243,24 @@ fn main() -> tokenizer::Result<()> {
         let tokenizer = Tokenizer::from_file("./clip/tokenizer.json")?;
         command_find_image(&database, &model, &tokenizer, &arg2.unwrap());
         return Ok(());
+    } else if arg1 == Some("check") {
+        let mut to_remove = Vec::new();
+        let mut last_print = std::time::Instant::now();
+        for (i, (path, _)) in database.iter().enumerate() {
+            if last_print.elapsed().as_secs() >= 1 {
+                println!("checking {}/{}", i + 1, database.len());
+                last_print += std::time::Duration::from_secs(1);
+            }
+            if !std::path::Path::new(path).exists() {
+                to_remove.push(path.clone());
+            }
+        }
+        for path in to_remove.iter() {
+            database.remove(path);
+        }
+        println!("removed {} invalid entries", to_remove.len());
+        save_database(&database);
+        return Ok(());
     } else if arg1 == Some("serve") && arg2.is_some() {
         let weights =
             unsafe { candle_core::safetensors::MmapedFile::new("clip/model.safetensors")? };
