@@ -97,7 +97,11 @@ fn get_images(path: &str) -> Vec<String> {
             let entry = entry.expect("failed to read entry");
             let path = entry.path();
             if path.is_dir() {
-                recurse(&path.to_string_lossy(), result);
+                let path = path.to_string_lossy();
+                if path.starts_with('.') {
+                    continue;
+                }
+                recurse(&path, result);
             } else {
                 let extension = get_extension(&path);
                 let path = path.to_string_lossy();
