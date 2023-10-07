@@ -3,8 +3,6 @@ use candle_core::Module;
 use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
 use std::collections::BTreeMap;
-use std::error::Error;
-use std::fs::read;
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::Arc;
 use tokenizers::tokenizer;
@@ -187,7 +185,8 @@ fn api_get_image(
     _headers: HttpHeaders,
     params: HttpParams,
     _body: HttpBody,
-) -> Result<HttpResponse, Box<dyn Error>> {
+) -> Result<HttpResponse, Box<dyn std::error::Error>> {
+    use std::fs::read;
     let image_path = params.get("path").ok_or("missing parameter 'path'")?.trim();
     let (content_type, content) = match get_extension(image_path).as_str() {
         "png" => {
