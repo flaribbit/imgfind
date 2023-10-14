@@ -35,13 +35,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - name: cache vcpkg
-      uses: actions/cache@v3
-      with:
-        key: vcpkg-android
-        path: ${{ env.VCPKG_INSTALLATION_ROOT }}/installed
-    - name: setup vcpkg
-      run: vcpkg install libheif:arm64-android
     - name: setup cargo-ndk
       run: |
         cargo install cargo-ndk
