@@ -3,8 +3,6 @@ use candle_core::Module;
 use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
 use std::collections::BTreeMap;
-use std::error::Error;
-use std::fs::read;
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::Arc;
 use tokenizers::tokenizer;
@@ -99,7 +97,11 @@ fn get_images(path: &str) -> Vec<String> {
             let entry = entry.expect("failed to read entry");
             let path = entry.path();
             if path.is_dir() {
-                recurse(&path.to_string_lossy(), result);
+                let path = path.to_string_lossy();
+                if path.starts_with('.') {
+                    continue;
+                }
+                recurse(&path, result);
             } else {
                 let extension = get_extension(&path);
                 let path = path.to_string_lossy();
@@ -187,7 +189,8 @@ fn api_get_image(
     _headers: HttpHeaders,
     params: HttpParams,
     _body: HttpBody,
-) -> Result<HttpResponse, Box<dyn Error>> {
+) -> Result<HttpResponse, Box<dyn std::error::Error>> {
+    use std::fs::read;
     let image_path = params.get("path").ok_or("missing parameter 'path'")?.trim();
     let (content_type, content) = match get_extension(image_path).as_str() {
         "png" => {
@@ -239,6 +242,24 @@ fn main() -> tokenizer::Result<()> {
         let model = model::ClipTextTransformer::new(vb, &model::Config::clip())?;
         let tokenizer = Tokenizer::from_file("./clip/tokenizer.json")?;
         command_find_image(&database, &model, &tokenizer, &arg2.unwrap());
+        return Ok(());
+    } else if arg1 == Some("check") {
+        let mut to_remove = Vec::new();
+        let mut last_print = std::time::Instant::now();
+        for (i, (path, _)) in database.iter().enumerate() {
+            if last_print.elapsed().as_secs() >= 1 {
+                println!("checking {}/{}", i + 1, database.len());
+                last_print += std::time::Duration::from_secs(1);
+            }
+            if !std::path::Path::new(path).exists() {
+                to_remove.push(path.clone());
+            }
+        }
+        for path in to_remove.iter() {
+            database.remove(path);
+        }
+        println!("removed {} invalid entries", to_remove.len());
+        save_database(&database);
         return Ok(());
     } else if arg1 == Some("serve") && arg2.is_some() {
         let weights =
