@@ -42,4 +42,6 @@ jobs:
       run: |
         export NDK_HOME=$ANDROID_NDK_PATH
         export PKG_CONFIG_SYSROOT_DIR=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot
+        ln -s $NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android-clang $NDK_HOME/bin/aarch64-linux-android-clang
+        ln -s $NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar $NDK_HOME/bin/aarch64-linux-android-ar
         cargo build --release --all-features --target aarch64-linux-android
