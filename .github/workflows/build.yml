@@ -37,10 +37,9 @@ jobs:
     - uses: actions/checkout@v3
     - name: setup cargo-ndk
       run: |
-        cargo install cargo-ndk
-        rustup target add aarch64-linux-android armv7-linux-androideabi
+        rustup target add aarch64-linux-android
     - name: Build
       run: |
-        export VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT
         export NDK_HOME=$ANDROID_NDK_PATH
-        cargo ndk --platform 21 --target aarch64-linux-android build --release --all-features
+        export PKG_CONFIG_SYSROOT_DIR=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot
+        cargo build --release --all-features --target aarch64-linux-android
