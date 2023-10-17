@@ -37,11 +37,9 @@ jobs:
     - uses: actions/checkout@v3
     - name: setup cargo-ndk
       run: |
+        cargo install cargo-ndk
         rustup target add aarch64-linux-android
     - name: Build
       run: |
         export NDK_HOME=$ANDROID_NDK_PATH
-        export PKG_CONFIG_SYSROOT_DIR=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot
-        sudo ln -s $NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android-clang $NDK_HOME/bin/aarch64-linux-android-clang
-        sudo ln -s $NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar $NDK_HOME/bin/aarch64-linux-android-ar
-        cargo build --release --all-features --target aarch64-linux-android
+        cargo ndk --platform 21 --target aarch64-linux-android build --release --all-features
