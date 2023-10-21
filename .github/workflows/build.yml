@@ -42,4 +42,5 @@ jobs:
     - name: Build
       run: |
         export NDK_HOME=$ANDROID_NDK_PATH
+        export PKG_CONFIG_SYSROOT_DIR=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot
         cargo ndk --platform 21 --target aarch64-linux-android build --release --all-features
