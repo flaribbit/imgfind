@@ -12,7 +12,7 @@ heif = ["libheif-rs"]
 candle-core = "0.2.1"
 candle-nn = "0.2.1"
 image = "0.24.7"
-libheif-rs = { version = "0.22.0", optional = true }
+libheif-rs = { version = "0.22.0", default-features = false, optional = true }
 rmp-serde = "1.1.2"
 serde = "1.0.188"
 serde_json = "1"
