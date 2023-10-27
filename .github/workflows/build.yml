@@ -38,16 +38,9 @@ jobs:
     - name: setup
       run: |
         wget https://github.com/flaribbit/imgfind/releases/download/model/libheif.so -O .github/libheif.so
-        rustup target add aarch64-linux-android
+        cargo install cross --git https://github.com/cross-rs/cross
     - name: Build
-      run: |
-        export NDK_HOME=$ANDROID_NDK_HOME
-        export NDK_BIN=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
-        export PATH="$NDK_BIN:$PATH"
-        ln -s $NDK_BIN/aarch64-linux-android21-clang $NDK_BIN/aarch64-linux-android-clang
-        ln -s $NDK_BIN/aarch64-linux-android21-clang++ $NDK_BIN/aarch64-linux-android-clang++
-        ln -s $NDK_BIN/llvm-ar $NDK_BIN/aarch64-linux-android-ar
-        cargo build --release --all-features --target aarch64-linux-android
+      run: cross build --release --all-features --target aarch64-linux-android
     - uses: actions/upload-artifact@v3
       with:
         name: android-aarch64
