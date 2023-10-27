@@ -14,13 +14,13 @@ jobs:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v3
-    - name: setup vcpkg
-      run: vcpkg install libheif:x64-windows-static
     - name: cache vcpkg
       uses: actions/cache@v3
       with:
         key: vcpkg-win64
-        path: ${{ env.VCPKG_INSTALLATION_ROOT }}/installed
+        path: C:/vcpkg/installed
+    - name: setup vcpkg
+      run: vcpkg install libheif:x64-windows-static
     - name: Build
       run: |
         $env:VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT
@@ -41,11 +41,12 @@ jobs:
         rustup target add aarch64-linux-android
     - name: Build
       run: |
-        export NDK_HOME=$ANDROID_NDK_PATH
-        export PATH=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
-        export CC=aarch64-linux-android21-clang
-        export CXX=aarch64-linux-android21-clang++
-        export AR=llvm-ar
+        export NDK_HOME=$ANDROID_NDK_HOME
+        export NDK_BIN=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
+        export PATH="$NDK_BIN:$PATH"
+        ln -s $NDK_BIN/aarch64-linux-android21-clang $NDK_BIN/aarch64-linux-android-clang
+        ln -s $NDK_BIN/aarch64-linux-android21-clang++ $NDK_BIN/aarch64-linux-android-clang++
+        ln -s $NDK_BIN/llvm-ar $NDK_BIN/aarch64-linux-android-ar
         cargo build --release --all-features --target aarch64-linux-android
     - uses: actions/upload-artifact@v3
       with:
