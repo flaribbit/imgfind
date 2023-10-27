@@ -11,6 +11,14 @@ fn main() {
     #[allow(unused_variables)]
     let mut include_dirs: Vec<String> = Vec::new();
 
+    // 交叉编译专用
+    #[cfg(target_os = "linux")]
+    if cfg!(target_os = "android") {
+        println!("cargo:rustc-link-search=native=.github");
+        println!("cargo:rustc-link-lib=heif");
+        return;
+    }
+
     #[cfg(not(target_os = "windows"))]
     if let Err(err) = pkg_config::Config::new()
         .atleast_version("1.16")

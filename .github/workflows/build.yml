@@ -35,12 +35,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - name: setup cargo-ndk
+    - name: setup
       run: |
-        cargo install cargo-ndk
-        rustup target add aarch64-linux-android
+        cargo install cross
+        wget https://github.com/flaribbit/imgfind/releases/download/model/libheif.so -O .github/libheif.so
     - name: Build
-      run: |
-        export NDK_HOME=$ANDROID_NDK_PATH
-        export PKG_CONFIG_SYSROOT_DIR=$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot
-        cargo ndk --platform 21 --target aarch64-linux-android build --release --all-features
+      run: cross build --release --all-features --target aarch64-linux-android
+    - uses: actions/upload-artifact@v3
+      with:
+        name: android-aarch64
+        path: target/aarch64-linux-android/release/imgfind
