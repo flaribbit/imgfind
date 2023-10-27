@@ -3,6 +3,7 @@ name: Build
 on:
   push:
     branches: [ "master", "ci" ]
+    tags: [ "v*" ]
   pull_request:
     branches: [ "master", "ci" ]
 
@@ -30,7 +31,14 @@ jobs:
       with:
         name: win64
         path: target/release/imgfind.exe
-  
+    - name: Release
+      uses: ncipollo/release-action@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        allowUpdates: true
+        name: win64
+        artifacts: target/release/imgfind.exe
+
   build-android:
     runs-on: ubuntu-latest
     steps:
@@ -45,3 +53,10 @@ jobs:
       with:
         name: android-aarch64
         path: target/aarch64-linux-android/release/imgfind
+    - name: Release
+      uses: ncipollo/release-action@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        allowUpdates: true
+        name: android-aarch64
+        artifacts: target/aarch64-linux-android/release/imgfind
