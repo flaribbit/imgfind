@@ -15,12 +15,12 @@ jobs:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v3
-    - name: cache vcpkg
+    - name: Cache vcpkg
       uses: actions/cache@v3
       with:
         key: vcpkg-win64
         path: C:/vcpkg/installed
-    - name: setup vcpkg
+    - name: Setup vcpkg
       run: vcpkg install libheif:x64-windows-static
     - name: Build
       run: |
@@ -31,19 +31,21 @@ jobs:
       with:
         name: win64
         path: target/release/imgfind.exe
+    - name: Prepare Release
+      if: startsWith(github.ref, 'refs/tags/')
+      run: cp target/release/imgfind.exe target/release/imgfind-win64.exe
     - name: Release
       uses: ncipollo/release-action@v1
       if: startsWith(github.ref, 'refs/tags/')
       with:
         allowUpdates: true
-        name: win64
-        artifacts: target/release/imgfind.exe
+        artifacts: target/release/imgfind-win64.exe
 
   build-android:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - name: setup
+    - name: Setup
       run: |
         wget https://github.com/flaribbit/imgfind/releases/download/model/libheif.so -O .github/libheif.so
         cargo install cross --git https://github.com/cross-rs/cross
@@ -53,10 +55,12 @@ jobs:
       with:
         name: android-aarch64
         path: target/aarch64-linux-android/release/imgfind
+    - name: Prepare Release
+      if: startsWith(github.ref, 'refs/tags/')
+      run: cp target/aarch64-linux-android/release/imgfind target/aarch64-linux-android/release/imgfind-android
     - name: Release
       uses: ncipollo/release-action@v1
       if: startsWith(github.ref, 'refs/tags/')
       with:
         allowUpdates: true
-        name: android-aarch64
-        artifacts: target/aarch64-linux-android/release/imgfind
+        artifacts: target/aarch64-linux-android/release/imgfind-android
