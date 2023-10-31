@@ -19,15 +19,18 @@ fn load_heif(p: &str) -> candle_core::Result<image::DynamicImage> {
     // Decode the image
     let image = lib_heif
         .decode(&handle, ColorSpace::Rgb(RgbChroma::Rgb), None)
-        .expect("failed to decode image");
-    let interleaved_plane = image.planes().interleaved.unwrap();
+        .map_err(Error::wrap)?;
+    let interleaved_plane = image
+        .planes()
+        .interleaved
+        .ok_or(Error::Msg("failed to get interleaved plane".to_string()))?;
     Ok(image::DynamicImage::ImageRgb8(
         image::RgbImage::from_raw(
             handle.width(),
             handle.height(),
             interleaved_plane.data.to_vec(),
         )
-        .unwrap(),
+        .ok_or(Error::Msg("failed to create RGB image".to_string()))?,
     ))
 }
 
